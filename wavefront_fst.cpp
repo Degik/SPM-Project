@@ -29,6 +29,13 @@ typedef struct Resources{
     uint16_t D; // D = Workers for the Dot-Product-Stage
 } Resources;
 
+
+// CalculateResources
+/*!
+    \name CalculateResources
+    \brief Calculate the resources for the workers
+    \note Calculate the resources for the workers based on the values of W, K, N and return the resources for the workers (Z, D)
+*/
 Resources CalculateResources(uint16_t W, uint16_t K, uint16_t N){
     Resources resources = {0, 0};
     if (K < W){
@@ -44,6 +51,11 @@ Resources CalculateResources(uint16_t W, uint16_t K, uint16_t N){
 
 
 // FillMatrix
+/*!
+    \name FillMatrix
+    \brief Fill the matrix M with the values
+    \note Fill the matrix M with the values
+*/
 vector<vector<double>>& FillMatrix(vector<vector<double>>& M, uint16_t N, uint16_t W){
     ParallelFor pf(W); // Create the parallel for object with W workers
     // Fill the diagonal elements (i,j) (where i == j) with (m+1)/N
@@ -54,6 +66,11 @@ vector<vector<double>>& FillMatrix(vector<vector<double>>& M, uint16_t N, uint16
 }
 
 // Print matrix M
+/*!
+    \name PrintMatrix
+    \brief Print the matrix M
+    \note Print the matrix M
+*/
 void PrintMatrix(vector<vector<double>>& M, uint16_t N){
     for(int i = 0; i < N; i++){
         for(int j = 0; j < N; j++){
@@ -63,9 +80,14 @@ void PrintMatrix(vector<vector<double>>& M, uint16_t N){
     }
 }
 
-void SaveMatrixToFile(vector<vector<double>>& M, uint16_t N){
+/*!
+    \name SaveMatrixToFile
+    \brief Save the matrix M to a file
+    \note Save the matrix M to a file with the name filename
+*/
+void SaveMatrixToFile(vector<vector<double>>& M, uint16_t N, string filename){
     ofstream file;
-    file.open("matrix.txt");
+    file.open(filename);
     for(int i = 0; i < N; i++){
         for(int j = 0; j < N; j++){
             file << M[i][j] << " ";
@@ -75,23 +97,10 @@ void SaveMatrixToFile(vector<vector<double>>& M, uint16_t N){
     file.close();
 }
 
-struct CreateMatrix: ff_node_t<int, vector<vector<double>>> {
-    uint16_t N, W;
-    CreateMatrix(uint16_t size, uint16_t workers): N(size), W(workers) {} // Constructor
-    
-    vector<vector<double>> *svc(int *task){ // Service
-        vector<vector<double>> M (N, vector<double>(N, 0.0)); // Create the matrix
-        M = FillMatrix(M, N, W);     // Fill the matrix
-        //PrintMatrix(M, N);           // Print the matrix
-        //SaveMatrixToFile(M, N);      // Save the matrix to a file
-        return new vector<vector<double>>(M);
-    }
-    
-};
-
-
 /*!
-   \brief Calculate the partial dot product of v1,v2
+    \name PartialDotProduct
+    \brief Calculate the partial dot product of the vectors
+    \note Calculate the partial dot product of the vectors v1 and v2 with the size
 */
 double PartialDotProduct(const vector_d &v1, const vector_d &v2, uint16_t size){
     double partial_sum = 0.0;
@@ -128,8 +137,29 @@ list<vector_d> SplitVector(vector_d v, uint16_t D, uint16_t K){
 
 // FastFlow Functions
 //
+/*!
+    \name CreateMatrix
+    \brief Create the matrix M
+    \note Create the matrix M with the size N and fill it with the values
+*/
+struct CreateMatrix: ff_node_t<int, vector<vector<double>>> {
+    uint16_t N, W;
+    CreateMatrix(uint16_t size, uint16_t workers): N(size), W(workers) {} // Constructor
+    
+    vector<vector<double>> *svc(int *task){ // Service
+        vector<vector<double>> M (N, vector<double>(N, 0.0)); // Create the matrix
+        M = FillMatrix(M, N, W);     // Fill the matrix
+        PrintMatrix(M, N);           // Print the matrix
+        SaveMatrixToFile(M, N, "matrix.txt");      // Save the matrix to a file
+        return new vector<vector<double>>(M);
+    }
+    
+};
 
-
+/*!
+    \name Sink
+    \brief Calculate the cbrt(sum) and update the matrix
+*/
 struct Sink: ff_minode_t<double, double>{
     matrix_d& M; // Reference to the matrix
     int i, j;    // Indices of the matrix to update
@@ -222,7 +252,6 @@ struct DotProduct_Stage: ff_node_t<tuple<vector_d, vector_d, matrix_d, uint16_t,
         }
 
         farm.wait();
-        // Update the matrix
     }
 };
 
@@ -232,7 +261,7 @@ struct M_Diagonal_Stage: ff_node_t<matrix_d, matrix_d> { // Take matrix M and re
 
     M_Diagonal_Stage(uint16_t N, uint16_t K, uint16_t W, uint16_t Z, uint16_t D): N(N), K(K), W(W), Z(Z), D(D) {}
 
-    vector<vector<double>> *svc(vector<vector<double>> *M){
+    matrix_d *svc(matrix_d *M){
         
         vector<unique_ptr<ff_node>> workers;
         // Cycle with m with m = [0, n-k[
@@ -243,14 +272,19 @@ struct M_Diagonal_Stage: ff_node_t<matrix_d, matrix_d> { // Take matrix M and re
         ff_Farm<double> farm(move(workers));
 
         for (uint16_t m = 0 ; m < N - K; m++){
-            for (uint16_t n = m + K; n < N; n++){
-                tuple_dot_product *task = new tuple_dot_product(vector_d(M->at(m)), vector_d(M->at(n)), *M, K, W, D, m, n);
-                farm.ff_send_out(task);
-            }
+            // Take the vectors v1 and v2 starting from position m and m+K to K
+            vector_d v1((*M)[m].begin(), (*M)[m].begin() + K);
+            vector_d v2((*M)[m+K].begin(), (*M)[m+K].begin() + m + K);
+            tuple_dot_product task = make_tuple(v1, v2, *M, K, W, D, m, m+K);
+            farm.ff_send_out(new tuple_dot_product(task));
         }
 
+        farm.run_then_freeze();
+        farm.wait();
 
+        SaveMatrixToFile(*M, N, "matrix_prime.txt");
 
+        return EOS;
     }
 };
 
@@ -279,21 +313,19 @@ int main(int argc, char* arg[]){
     // Fill the matrix M with the values (m+1)/N
     CreateMatrix s1(N, W);
     // Stage 2
-    // Create the dot product of the matrix M
-    
-    // Stage 3
-    // Merge the results of the dot product
+    // Calculate the dot product of the matrix
+    M_Diagonal_Stage s2(N, K, W, resources.Z, resources.D);
 
-    ff_Pipe<> pipe(s1);
-    /*if (pipe.run_and_wait_end() < 0) {
+    ff_Pipe<> pipe(s1,s2);
+    if (pipe.run_and_wait_end() < 0) {
         error("Running pipe\n");
         return -1;
     }
-    cout << "End" << endl;*/
-    int task = 0;
+    cout << "End" << endl;
+    /*int task = 0;
     s1.svc(&task);
     ffTime(STOP_TIME);
-    cout << "Time: " << ffTime(GET_TIME)/1000.0 << endl;
+    cout << "Time: " << ffTime(GET_TIME)/1000.0 << endl;*/
 
     // CREATE MATRIX M (Stage 1)
     // STAGE 1 create all subelements of the matrix for the diagoanl

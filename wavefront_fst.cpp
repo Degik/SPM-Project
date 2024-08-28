@@ -17,8 +17,12 @@
 using namespace std;
 using namespace ff;
 
-using matrix_d = vector<vector<double>>;
+
 using vector_d = vector<double>;
+using matrix_d = vector<vector<double>>;
+using tuple_dot_product = tuple<vector_d, vector_d, matrix_d, uint16_t, uint16_t, uint16_t, int, int>;
+
+mutex mtx; // Mutex for the print
 
 typedef struct Resources{
     uint16_t Z; // Z = Workers for the M-Diagonal-Stage
@@ -124,6 +128,30 @@ list<vector_d> SplitVector(vector_d v, uint16_t D, uint16_t K){
 
 // FastFlow Functions
 //
+
+
+struct Sink: ff_minode_t<double, double>{
+    matrix_d& M; // Reference to the matrix
+    int i, j;    // Indices of the matrix to update
+    double sum = 0.0;
+    Sink(matrix_d& M, int i, int j) : M(M), i(i), j(j) {}
+
+    double* svc(double* task){
+        sum += *task;
+        delete task;
+        return GO_ON;
+    }
+
+    void svc_end(){ // matrix_d, int(i), int(j)
+        // Update the matrix
+        const double element = cbrt(sum);
+        M[i][j] = element;
+        mtx.lock();
+        cout << "Ho aggiornato la matrice con il valore: " << element << " nella posizione M[" << i << "][" << j << "]" << endl;
+        mtx.unlock();
+    }
+};
+
 // DotProduct_Worker
 // Take the tuple (v1, v2, start, ending)
 /*!
@@ -152,16 +180,19 @@ struct DotProduct_Worker: ff_node_t<tuple<vector_d, vector_d, int>, double>{
        \n Call DotProduct_Worker for calculate each sub dot product on this sub vectors
        \n Take all the results and calculate cbrt(sum) and then return the value
 */
-struct DotProduct_Stage: ff_node_t<tuple<vector_d, vector_d>, double> {
-    uint16_t N, K, W; // Size, K, Number of workers
-    uint16_t D;       // Number of workers for M_Diagonal
-
-    DotProduct_Stage(uint16_t N, uint16_t K, uint16_t W, uint16_t Z): N(N), K(K), W(W), D(D) {}
-
+struct DotProduct_Stage: ff_node_t<tuple<vector_d, vector_d, matrix_d, uint16_t, uint16_t, uint16_t, int, int>, double> {
     // Take the vectors (v1, v2) created on the previous stage
-    double* svc(tuple<vector_d, vector_d> *vectors){
-        const vector_d v1 = std::get<0>(*vectors);
-        const vector_d v2 = std::get<1>(*vectors);
+    double* svc(tuple<vector_d, vector_d, matrix_d, uint16_t, uint16_t, uint16_t, int, int> *task){
+        const vector_d& v1 = std::get<0>(*task);
+        const vector_d& v2 = std::get<1>(*task);
+        matrix_d& M = std::get<2>(*task);
+        const uint16_t K = std::get<3>(*task); // K
+        const uint16_t W = std::get<4>(*task); // Number of workers
+        const uint16_t D = std::get<5>(*task); // Number of workers for the DotProduct
+        const int i = std::get<6>(*task); // i
+        const int j = std::get<7>(*task); // j
+
+
         vector<unique_ptr<ff_node>> workers;
         //
         list<vector_d> sub_v1_list(D);
@@ -171,7 +202,7 @@ struct DotProduct_Stage: ff_node_t<tuple<vector_d, vector_d>, double> {
                 workers.push_back(make_unique<DotProduct_Worker>());
         }
 
-        ff_Farm<double> farm(move(workers));
+        ff_Farm<double> farm(move(workers), new Sink(M, i, j));
 
         // if K is less or equal with D we can have 1:(1,1) 
         // [one workers:for one elememt] for calculate the dot product
@@ -182,22 +213,15 @@ struct DotProduct_Stage: ff_node_t<tuple<vector_d, vector_d>, double> {
         farm.set_scheduling_ondemand();
         farm.run_then_freeze();
 
-        for(uint16_t w = 0; w < D; w++){
-            //Take the begin of the lists each time
-            const auto begin_v1 = sub_v1_list.begin();
-            const auto begin_v2 = sub_v2_list.begin();
-            //
-            advance(begin_v1, w); // Move the begin iterator to the w-th element
-            advance(begin_v2, w); // Move the begin iterator to the w-th element
-            //
+        auto begin_v1 = sub_v1_list.begin();
+        auto begin_v2 = sub_v2_list.begin();
+        
+        for(uint16_t w = 0; w < D; w++, begin_v1++, begin_v2++){
             const uint16_t size = begin_v1->size(); // v1 and v2 have the same size
             farm.ff_send_out(new tuple<vector_d, vector_d, int>(*begin_v1, *begin_v2, size));
         }
-        
-        // Take the results from the workers
-        double sum = 0.0;
-        
 
+        farm.wait();
         // Update the matrix
     }
 };
@@ -213,10 +237,17 @@ struct M_Diagonal_Stage: ff_node_t<matrix_d, matrix_d> { // Take matrix M and re
         vector<unique_ptr<ff_node>> workers;
         // Cycle with m with m = [0, n-k[
         for (uint16_t w = 0; w < Z; w++){
-            workers.push_back(make_unique<DotProduct_Stage>(N, K, W, D));
+            workers.push_back(make_unique<DotProduct_Stage>());
         }
 
         ff_Farm<double> farm(move(workers));
+
+        for (uint16_t m = 0 ; m < N - K; m++){
+            for (uint16_t n = m + K; n < N; n++){
+                tuple_dot_product *task = new tuple_dot_product(vector_d(M->at(m)), vector_d(M->at(n)), *M, K, W, D, m, n);
+                farm.ff_send_out(task);
+            }
+        }
 
 
 

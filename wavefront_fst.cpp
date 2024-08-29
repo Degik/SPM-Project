@@ -75,9 +75,9 @@ matrix_d& FillMatrix(matrix_d& M, uint16_t N, uint16_t W){
 void PrintMatrix(matrix_d& M, uint16_t N){
     for(int i = 0; i < N; i++){
         for(int j = 0; j < N; j++){
-            cout << M[i][j] << " ";
+            printf("%.6f ", M[i][j]);
         }
-        cout << endl;
+        printf("\n");
     }
 }
 
@@ -91,7 +91,7 @@ void SaveMatrixToFile(matrix_d& M, uint16_t N, string filename){
     file.open(filename);
     for(int i = 0; i < N; i++){
         for(int j = 0; j < N; j++){
-            file << M[i][j] << " ";
+            printf("%.6f ", M[i][j]);
         }
         file << endl;
     }
@@ -153,7 +153,7 @@ struct CreateMatrix: ff_node_t<int, matrix_d> {
         PrintMatrix(M, N);           // Print the matrix
         SaveMatrixToFile(M, N, "matrix.txt");      // Save the matrix to a file
         ff_send_out(new matrix_d(M));             // Send the matrix to the next stage
-        return GO_ON;
+        return EOS;
     }
     
 };
@@ -171,13 +171,14 @@ struct Sink: ff_minode_t<double, double>{
     double* svc(double* task){
         sum += *task;
         delete task;
-        return GO_ON;
+        return EOS;
     }
 
     void svc_end(){ // matrix_d, int(i), int(j)
         // Update the matrix
         const double element = cbrt(sum);
         M[i][j] = element;
+        M[j][i] = element;
         mtx.lock();
         cout << "Ho aggiornato la matrice con il valore: " << element << " nella posizione M[" << i << "][" << j << "]" << endl;
         mtx.unlock();
@@ -232,19 +233,28 @@ struct Diagonal_Emitter: ff_node_t<tuple_dot_product>{
         : M(M), N(N), K(K), W(W), D(D) {}
 
     tuple_dot_product* svc(tuple_dot_product*){
-        cout << "m = [0, " << N-K << "[" << endl;
+        cout << "m = [0, " << N - K << "[" << endl;
         for (int m = 0; m < N - K; m++){
             cout << "Taking v1 and v2 vectors for m: " << m << endl;
             vector_d v1;
             vector_d v2;
             for (int i = 0; i < K; i++){
-                v1.push_back(M[m][i]);
-                cout << "M[" << m << "][" << i << "]: " << M[m][i] << endl;
+                v1.push_back(M[m][m+i]);
+                cout << "M[" << m << "][" << m+i << "]: " << M[m][i] << endl;
+                v2.push_back(M[m+K][m+i]);
+                cout << "M[" << m+K << "][" << m+i << "]: " << M[i][m+K] << endl;
             }
-            for (int i = 0; i < K; i++){
-                v2.push_back(M[m+K][i]);
-                cout << "M[" << i << "][" << m+K << "]: " << M[i][m+K] << endl;
+            cout << "v1: { ";
+            for(auto i : v1){
+                cout << i << " ";
             }
+            cout << "}" << endl;
+
+            cout << "v2: { ";
+            for(auto i : v2){
+                cout << i << " ";
+            }
+            cout << "}" << endl;
             cout << "Sending the tuple to the farm" << endl;
             ff_send_out(new tuple_dot_product(v1, v2, M, K, W, D, m, m+K));
             cout << "Tuple sent" << endl;
@@ -314,19 +324,6 @@ struct DotProduct_Stage: ff_node_t<tuple_dot_product, double> {
             error("Running farm (DotProduct)\n");
             return EOS;
         }
-
-        // auto begin_v1 = sub_v1_list.begin();
-        // auto begin_v2 = sub_v2_list.begin();
-        
-        // for(uint16_t w = 0; w < D; w++, begin_v1++, begin_v2++){
-        //     // Take the sub-vectors and send them to the workers
-        //     const uint16_t size = begin_v1->size(); // v1 and v2 have the same size
-        //     farm.ff_send_out(new tuple<vector_d, vector_d, int>(*begin_v1, *begin_v2, size));
-        //     cout << "Tuple sent (DotProduct)" << endl;
-        // }
-
-        // farm.wait();
-        // delete task;
         return GO_ON;
     }
 };
@@ -381,29 +378,33 @@ struct M_Diagonal_Stage: ff_node_t<matrix_d, matrix_d> { // Take matrix M and re
         // farm.wait();
         // delete M;
 
-        SaveMatrixToFile(*M, N, "matrix_prime.txt");
+        if (N-1 == K){
+            return M;
+        }
+        return GO_ON;
+    }
+};
 
+struct SaveMatrix_Stage: ff_node_t<matrix_d>{
+    matrix_d* svc(matrix_d* task){
+        uint16_t size = task->size();
+        SaveMatrixToFile(*task, size, "matrix_prime.txt");
         return EOS;
     }
 };
 
 int main(int argc, char* arg[]){
-    // N, K, W
-    if (argc != 4) {
-        cout << "Usage: " << arg[0] << "N (Size N*N) K (K value) W (Workers)" << endl;
+    // N, W
+    if (argc != 3) {
+        cout << "Usage: " << arg[0] << "N (Size N*N) W (Workers)" << endl;
         return -1;
     }
 
     const uint16_t N = atoi(arg[1]);
-    const uint16_t K = atoi(arg[2]);
-    const uint16_t W = atoi(arg[3]);
+    const uint16_t W = atoi(arg[2]);
 
-    cout << "N: " << N << " K: " << K << " W: " << W << endl;
+    cout << "N: " << N << " W: " << W << endl;
 
-    // Calculate how to split the workers W
-    Resources resources = CalculateResources(W, K, N);
-    
-    cout << "DiagonalStage-Workers Z: " << resources.Z << " DotProductStage-Workers D: " << resources.D << endl;
 
     ffTime(START_TIME);
 
@@ -411,18 +412,33 @@ int main(int argc, char* arg[]){
     // Create the matrix M
     // Fill the matrix M with the values (m+1)/N
     CreateMatrix s1(N, W);
+    //
+    ff_Pipe<> pipe;
+    //pipe.add_stage(s1);
     // Stage 2
     // Calculate the dot product of the matrix
-    M_Diagonal_Stage s2(N, K, W, resources.Z, resources.D);
+    for (uint16_t k = 1; k < N; k++){
+        // Calculate how to split the workers W
+        Resources resources = CalculateResources(W, k, N);
 
-    ff_Pipe<> pipe(s1,s2);
-    if (pipe.run_and_wait_end() < 0) {
-        error("Running pipe\n");
-        return -1;
+        cout << "K = " << k << endl;
+        cout << "DiagonalStage-Workers Z: " << resources.Z << " DotProductStage-Workers D: " << resources.D << endl;
+        
+        //M_Diagonal_Stage* s2 = new M_Diagonal_Stage(N, k, W, resources.Z, resources.D);
+        M_Diagonal_Stage s2(N, k, W, resources.Z, resources.D);
+
+        pipe.add_stage(s2);
+        
     }
-    cout << "End" << endl;
+    // Save the matrix to a file
+    //SaveMatrix_Stage s3;
+    //pipe.add_stage(s3);
     //int task = 0;
     //s1.svc(&task);
+    if (pipe.run_and_wait_end() < 0){
+        error("Running pipe");
+        return -1;
+    }
     ffTime(STOP_TIME);
     cout << "Time: " << ffTime(GET_TIME)/1000.0 << endl;
 
@@ -433,3 +449,4 @@ int main(int argc, char* arg[]){
     // SPLIT THE PROBLEME WITH THE PIPE()
     // CREATE THE FARM FOR GENERETING THE DOT PRODUCT
 }
+

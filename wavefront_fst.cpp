@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <iostream>
 #include <iterator>
+#include <iomanip>
 #include <cstdlib>
 #include <numeric>
 #include <vector>
@@ -89,9 +90,10 @@ void PrintMatrix(matrix_d& M, uint16_t N){
 void SaveMatrixToFile(matrix_d& M, uint16_t N, string filename){
     ofstream file;
     file.open(filename);
+    file << fixed << setprecision(6);
     for(int i = 0; i < N; i++){
         for(int j = 0; j < N; j++){
-            printf("%.6f ", M[i][j]);
+            file << M[i][j] << " ";
         }
         file << endl;
     }
@@ -120,15 +122,21 @@ double PartialDotProduct(const vector_d &v1, const vector_d &v2, uint16_t size){
 
 */
 list<vector_d> SplitVector(vector_d v, uint16_t D, uint16_t K){
-    size_t base_size = D / K;
-    size_t remainder = D % K;
-    size_t start = 0;
+    uint16_t base_size = (K < D) ? D / K : K / D;
+    uint16_t remainder = (K < D) ? D % K : K % D;
+    uint16_t start = 0;
 
     // All sub vectors are stored in this list
     list<vector_d> splitted_vectors;
 
+    // If K is less or equal with D we can have 1:(1,1)
+    if (K <= 1){ splitted_vectors.push_back(v); return splitted_vectors; }
+
     for (size_t i = 0; i < K; ++i) {
         size_t current_size = base_size + (i < remainder ? 1 : 0);
+        if (start + current_size > v.size()){
+            throw out_of_range("Index out of bounds!");
+        }
         splitted_vectors.push_back(vector_d(v.begin() + start, v.begin() + start + current_size));
         start += current_size;
     }
@@ -179,9 +187,7 @@ struct Sink: ff_minode_t<double, double>{
         const double element = cbrt(sum);
         M[i][j] = element;
         M[j][i] = element;
-        mtx.lock();
         cout << "Ho aggiornato la matrice con il valore: " << element << " nella posizione M[" << i << "][" << j << "]" << endl;
-        mtx.unlock();
     }
 };
 
@@ -209,7 +215,10 @@ struct DotProduct_Emitter: ff_node_t<tuple<vector_d, vector_d, int>>{
         //
         auto begin_v1 = sub_v1_list.begin();
         auto begin_v2 = sub_v2_list.begin();
-        for(uint16_t w = 0; w < D; w++, begin_v1++, begin_v2++){
+
+        uint16_t limit = min((size_t)D, sub_v1_list.size());
+
+        for(uint16_t w = 0; w < limit; w++, begin_v1++, begin_v2++){
             // Take the sub-vectors and send them to the workers
             const uint16_t size = begin_v1->size(); // v1 and v2 have the same size
             ff_send_out(new tuple<vector_d, vector_d, int>(*begin_v1, *begin_v2, size));
@@ -378,10 +387,7 @@ struct M_Diagonal_Stage: ff_node_t<matrix_d, matrix_d> { // Take matrix M and re
         // farm.wait();
         // delete M;
 
-        if (N-1 == K){
-            return M;
-        }
-        return GO_ON;
+        return M;
     }
 };
 
@@ -413,30 +419,31 @@ int main(int argc, char* arg[]){
     // Fill the matrix M with the values (m+1)/N
     CreateMatrix s1(N, W);
     //
-    ff_Pipe<> pipe;
+    //Resources resources = CalculateResources(W, 1, N);
+    //
+    //M_Diagonal_Stage s2(N, 1, W, resources.Z, resources.D);
+    //
+    ff_Pipe<> pipe(s1);
     //pipe.add_stage(s1);
-    // Stage 2
-    // Calculate the dot product of the matrix
+    //Stage 2
+    vector<unique_ptr<ff_node>> workers;
     for (uint16_t k = 1; k < N; k++){
-        // Calculate how to split the workers W
         Resources resources = CalculateResources(W, k, N);
-
         cout << "K = " << k << endl;
         cout << "DiagonalStage-Workers Z: " << resources.Z << " DotProductStage-Workers D: " << resources.D << endl;
-        
-        //M_Diagonal_Stage* s2 = new M_Diagonal_Stage(N, k, W, resources.Z, resources.D);
-        M_Diagonal_Stage s2(N, k, W, resources.Z, resources.D);
-
-        pipe.add_stage(s2);
-        
+        cout << endl;
+        workers.push_back(make_unique<M_Diagonal_Stage>(N, k, W, resources.Z, resources.D));
     }
+    ff_Farm<matrix_d> farm(move(workers));
+    farm.set_scheduling_ondemand();
+    pipe.add_stage(farm);
     // Save the matrix to a file
-    //SaveMatrix_Stage s3;
-    //pipe.add_stage(s3);
+    SaveMatrix_Stage s3;
+    pipe.add_stage(s3);
     //int task = 0;
     //s1.svc(&task);
     if (pipe.run_and_wait_end() < 0){
-        error("Running pipe");
+        error("Running pipe\n");
         return -1;
     }
     ffTime(STOP_TIME);
@@ -449,4 +456,3 @@ int main(int argc, char* arg[]){
     // SPLIT THE PROBLEME WITH THE PIPE()
     // CREATE THE FARM FOR GENERETING THE DOT PRODUCT
 }
-

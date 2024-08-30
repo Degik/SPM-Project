@@ -19,10 +19,9 @@
 using namespace std;
 using namespace ff;
 
-
 using vector_d = vector<double>;
 using matrix_d = vector<vector<double>>;
-using tuple_dot_product = tuple<vector_d, vector_d, matrix_d, uint16_t, uint16_t, uint16_t, int, int>;
+using tuple_dot_product = tuple<vector_d, vector_d, shared_ptr<matrix_d>, uint16_t, uint16_t, uint16_t, int, int>;
 
 mutex mtx; // Mutex for the print
 
@@ -58,11 +57,11 @@ Resources CalculateResources(uint16_t W, uint16_t K, uint16_t N){
     \brief Fill the matrix M with the values
     \note Fill the matrix M with the values
 */
-matrix_d& FillMatrix(matrix_d& M, uint16_t N, uint16_t W){
+shared_ptr<matrix_d> FillMatrix(shared_ptr<matrix_d> M, uint16_t N, uint16_t W){
     ParallelFor pf(W); // Create the parallel for object with W workers
     // Fill the diagonal elements (i,j) (where i == j) with (m+1)/N
     pf.parallel_for(0, N, [&](const long m){
-        M[m][m] = static_cast<double>(m+1)/N;
+        (*M)[m][m] = static_cast<double>(m+1)/N;
     });
     return M;
 }
@@ -73,10 +72,10 @@ matrix_d& FillMatrix(matrix_d& M, uint16_t N, uint16_t W){
     \brief Print the matrix M
     \note Print the matrix M
 */
-void PrintMatrix(matrix_d& M, uint16_t N){
+void PrintMatrix(shared_ptr<matrix_d> M, uint16_t N){
     for(int i = 0; i < N; i++){
         for(int j = 0; j < N; j++){
-            printf("%.6f ", M[i][j]);
+            printf("%.6f ", (*M)[i][j]);
         }
         printf("\n");
     }
@@ -87,13 +86,13 @@ void PrintMatrix(matrix_d& M, uint16_t N){
     \brief Save the matrix M to a file
     \note Save the matrix M to a file with the name filename
 */
-void SaveMatrixToFile(matrix_d& M, uint16_t N, string filename){
+void SaveMatrixToFile(shared_ptr<matrix_d> M, uint16_t N, string filename){
     ofstream file;
     file.open(filename);
     file << fixed << setprecision(6);
     for(int i = 0; i < N; i++){
         for(int j = 0; j < N; j++){
-            file << M[i][j] << " ";
+            file << (*M)[i][j] << " ";
         }
         file << endl;
     }
@@ -151,16 +150,17 @@ list<vector_d> SplitVector(vector_d v, uint16_t D, uint16_t K){
     \brief Create the matrix M
     \note Create the matrix M with the size N and fill it with the values
 */
-struct CreateMatrix: ff_node_t<int, matrix_d> {
+struct CreateMatrix: ff_node_t<int, shared_ptr<matrix_d>> {
     uint16_t N, W;
     CreateMatrix(uint16_t size, uint16_t workers): N(size), W(workers) {} // Constructor
     
-    matrix_d *svc(int *task){ // Service
-        matrix_d M (N, vector_d(N, 0.0)); // Create the matrix
-        M = FillMatrix(M, N, W);     // Fill the matrix
-        PrintMatrix(M, N);           // Print the matrix
+    shared_ptr<matrix_d> *svc(int *task){ // Service
+        auto M = make_shared<matrix_d>(N, vector_d(N, 0.0));
+        //matrix_d M (N, vector_d(N, 0.0)); // Create the matrix
+        M = FillMatrix(M, N, W);                   // Fill the matrix
+        PrintMatrix(M, N);                         // Print the matrix
         SaveMatrixToFile(M, N, "matrix.txt");      // Save the matrix to a file
-        ff_send_out(new matrix_d(M));             // Send the matrix to the next stage
+        ff_send_out(&M);                           // Send the matrix to the next stage
         return EOS;
     }
     
@@ -170,11 +170,13 @@ struct CreateMatrix: ff_node_t<int, matrix_d> {
     \name Sink
     \brief Calculate the cbrt(sum) and update the matrix
 */
-struct Sink: ff_minode_t<double, double>{
-    matrix_d& M; // Reference to the matrix
+struct Sink: ff_node_t<double, double>{
+    shared_ptr<matrix_d> M; // Reference to the matrix
     int i, j;    // Indices of the matrix to update
     double sum = 0.0;
-    Sink(matrix_d& M, int i, int j) : M(M), i(i), j(j) {}
+    Sink(shared_ptr<matrix_d> M, int i, int j) : M(M), i(i), j(j) {
+        cout << "Indirizzo di M nel Sink: " << M.get() << endl;
+    }
 
     double* svc(double* task){
         sum += *task;
@@ -185,8 +187,9 @@ struct Sink: ff_minode_t<double, double>{
     void svc_end(){ // matrix_d, int(i), int(j)
         // Update the matrix
         const double element = cbrt(sum);
-        M[i][j] = element;
-        M[j][i] = element;
+        (*M)[i][j] = element;
+        (*M)[j][i] = element;
+        matrix_d& matrix = *M;
         cout << "Ho aggiornato la matrice con il valore: " << element << " nella posizione M[" << i << "][" << j << "]" << endl;
     }
 };
@@ -235,10 +238,10 @@ struct DotProduct_Emitter: ff_node_t<tuple<vector_d, vector_d, int>>{
     \note Take the matrix M and split it for the workers
 */
 struct Diagonal_Emitter: ff_node_t<tuple_dot_product>{
-    matrix_d& M;
+    shared_ptr<matrix_d> M;
     uint16_t N, K, W, D;
 
-    Diagonal_Emitter(matrix_d& M, uint16_t N, uint16_t K, uint16_t W, uint16_t D)
+    Diagonal_Emitter(shared_ptr<matrix_d> M, uint16_t N, uint16_t K, uint16_t W, uint16_t D)
         : M(M), N(N), K(K), W(W), D(D) {}
 
     tuple_dot_product* svc(tuple_dot_product*){
@@ -248,10 +251,10 @@ struct Diagonal_Emitter: ff_node_t<tuple_dot_product>{
             vector_d v1;
             vector_d v2;
             for (int i = 0; i < K; i++){
-                v1.push_back(M[m][m+i]);
-                cout << "M[" << m << "][" << m+i << "]: " << M[m][i] << endl;
-                v2.push_back(M[m+K][m+i]);
-                cout << "M[" << m+K << "][" << m+i << "]: " << M[i][m+K] << endl;
+                v1.push_back((*M)[m][m+i]);
+                cout << "M[" << m << "][" << m+i << "]: " << (*M)[m][i] << endl;
+                v2.push_back((*M)[m+K][m+i+K]);
+                cout << "M[" << m+K << "][" << m+i+K << "]: " << (*M)[i][m+K] << endl;
             }
             cout << "v1: { ";
             for(auto i : v1){
@@ -305,7 +308,7 @@ struct DotProduct_Stage: ff_node_t<tuple_dot_product, double> {
     double* svc(tuple_dot_product *task){
         const vector_d& v1 = std::get<0>(*task);
         const vector_d& v2 = std::get<1>(*task);
-        matrix_d& M = std::get<2>(*task);
+        shared_ptr<matrix_d> M = std::get<2>(*task);
         const uint16_t K = std::get<3>(*task); // K
         const uint16_t W = std::get<4>(*task); // Number of workers
         const uint16_t D = std::get<5>(*task); // Number of workers for the DotProduct
@@ -319,7 +322,9 @@ struct DotProduct_Stage: ff_node_t<tuple_dot_product, double> {
             workers.push_back(make_unique<DotProduct_Worker>());
         }
 
-        Sink sink(M, i, j);                             // Create the sink
+        // Matrix M is shared between the workers
+        auto matrix_ptr = make_shared<matrix_d>(M);
+        Sink sink(matrix_ptr, i, j);                             // Create the sink
         DotProduct_Emitter emitter(K, W, D, v1, v2); // Create the emitter
         ff_Farm<tuple<vector_d, vector_d, int>> farm(move(workers));
         // Add the emitter and the sink
@@ -337,13 +342,13 @@ struct DotProduct_Stage: ff_node_t<tuple_dot_product, double> {
     }
 };
 
-struct M_Diagonal_Stage: ff_node_t<matrix_d, matrix_d> { // Take matrix M and return M'
+struct M_Diagonal_Stage: ff_node_t<shared_ptr<matrix_d>, shared_ptr<matrix_d>> { // Take matrix M and return M'
     uint16_t N, K, W;
     uint16_t Z, D;
 
     M_Diagonal_Stage(uint16_t N, uint16_t K, uint16_t W, uint16_t Z, uint16_t D): N(N), K(K), W(W), Z(Z), D(D) {}
 
-    matrix_d *svc(matrix_d *M) {
+    shared_ptr<matrix_d> *svc(shared_ptr<matrix_d> M) {
         
         vector<unique_ptr<ff_node>> workers;
         // Cycle with m with m = [0, n-k[
@@ -351,8 +356,8 @@ struct M_Diagonal_Stage: ff_node_t<matrix_d, matrix_d> { // Take matrix M and re
             cout << "Worker - M: " << w << endl;
             workers.push_back(make_unique<DotProduct_Stage>());
         }
-        Diagonal_Emitter emitter(*M, N, K, W, D);
-        ff_Farm<tuple_dot_product, matrix_d> farm(move(workers), emitter);
+        Diagonal_Emitter emitter(M, N, K, W, D);
+        ff_Farm<tuple_dot_product, shared_ptr<matrix_d>> farm(move(workers), emitter);
         cout << "Farm created (M-Diagonal)" << endl;
         farm.wrap_around();
         //farm.remove_collector();
@@ -387,14 +392,14 @@ struct M_Diagonal_Stage: ff_node_t<matrix_d, matrix_d> { // Take matrix M and re
         // farm.wait();
         // delete M;
 
-        return M;
+        return &M;
     }
 };
 
-struct SaveMatrix_Stage: ff_node_t<matrix_d>{
-    matrix_d* svc(matrix_d* task){
+struct SaveMatrix_Stage: ff_node_t<shared_ptr<matrix_d>>{
+    shared_ptr<matrix_d> *svc(shared_ptr<matrix_d> task){
         uint16_t size = task->size();
-        SaveMatrixToFile(*task, size, "matrix_prime.txt");
+        SaveMatrixToFile(task, size, "matrix_prime.txt");
         return EOS;
     }
 };
@@ -434,7 +439,7 @@ int main(int argc, char* arg[]){
         cout << endl;
         workers.push_back(make_unique<M_Diagonal_Stage>(N, k, W, resources.Z, resources.D));
     }
-    ff_Farm<matrix_d> farm(move(workers));
+    ff_Farm<shared_ptr<matrix_d>> farm(move(workers));
     farm.set_scheduling_ondemand();
     pipe.add_stage(farm);
     // Save the matrix to a file

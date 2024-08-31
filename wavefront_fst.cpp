@@ -82,13 +82,17 @@ void PrintMatrix(shared_ptr<matrix_d> M, uint16_t N){
 }
 
 /*!
-    \name SaveMatrixToFile
+    \name SaveMatrixPtrToFile
+    \param M shared_ptr<matrix_d> M
+    \param N uint16_t N
+    \param filename string filename
     \brief Save the matrix M to a file
     \note Save the matrix M to a file with the name filename
 */
 void SaveMatrixToFile(shared_ptr<matrix_d> M, uint16_t N, string filename){
     ofstream file;
     file.open(filename);
+    matrix_d& matrix = *M;
     file << fixed << setprecision(6);
     for(int i = 0; i < N; i++){
         for(int j = 0; j < N; j++){
@@ -154,10 +158,11 @@ struct CreateMatrix: ff_node_t<int, shared_ptr<matrix_d>> {
     uint16_t N, W;
     CreateMatrix(uint16_t size, uint16_t workers): N(size), W(workers) {} // Constructor
     
-    shared_ptr<matrix_d> *svc(int *task){ // Service
-        auto M = make_shared<matrix_d>(N, vector_d(N, 0.0));
+    shared_ptr<matrix_d> *svc(int *task) override { // Service
+        static auto M = make_shared<matrix_d>(N, vector_d(N, 0.0));
         //matrix_d M (N, vector_d(N, 0.0)); // Create the matrix
         M = FillMatrix(M, N, W);                   // Fill the matrix
+        matrix_d& matrix = *M;
         PrintMatrix(M, N);                         // Print the matrix
         SaveMatrixToFile(M, N, "matrix.txt");      // Save the matrix to a file
         ff_send_out(&M);                           // Send the matrix to the next stage
@@ -246,6 +251,7 @@ struct Diagonal_Emitter: ff_node_t<tuple_dot_product>{
 
     tuple_dot_product* svc(tuple_dot_product*){
         cout << "m = [0, " << N - K << "[" << endl;
+        matrix_d& matrix = *M;
         for (int m = 0; m < N - K; m++){
             cout << "Taking v1 and v2 vectors for m: " << m << endl;
             vector_d v1;
@@ -323,8 +329,8 @@ struct DotProduct_Stage: ff_node_t<tuple_dot_product, double> {
         }
 
         // Matrix M is shared between the workers
-        auto matrix_ptr = make_shared<matrix_d>(M);
-        Sink sink(matrix_ptr, i, j);                             // Create the sink
+        matrix_d& matrix = *M;
+        Sink sink(M, i, j);                             // Create the sink
         DotProduct_Emitter emitter(K, W, D, v1, v2); // Create the emitter
         ff_Farm<tuple<vector_d, vector_d, int>> farm(move(workers));
         // Add the emitter and the sink
@@ -343,12 +349,14 @@ struct DotProduct_Stage: ff_node_t<tuple_dot_product, double> {
 };
 
 struct M_Diagonal_Stage: ff_node_t<shared_ptr<matrix_d>, shared_ptr<matrix_d>> { // Take matrix M and return M'
+
+private:
     uint16_t N, K, W;
     uint16_t Z, D;
-
+public:
     M_Diagonal_Stage(uint16_t N, uint16_t K, uint16_t W, uint16_t Z, uint16_t D): N(N), K(K), W(W), Z(Z), D(D) {}
 
-    shared_ptr<matrix_d> *svc(shared_ptr<matrix_d> M) {
+    shared_ptr<matrix_d> *svc(shared_ptr<matrix_d> *M) {
         
         vector<unique_ptr<ff_node>> workers;
         // Cycle with m with m = [0, n-k[
@@ -356,7 +364,7 @@ struct M_Diagonal_Stage: ff_node_t<shared_ptr<matrix_d>, shared_ptr<matrix_d>> {
             cout << "Worker - M: " << w << endl;
             workers.push_back(make_unique<DotProduct_Stage>());
         }
-        Diagonal_Emitter emitter(M, N, K, W, D);
+        Diagonal_Emitter emitter(*M, N, K, W, D);
         ff_Farm<tuple_dot_product, shared_ptr<matrix_d>> farm(move(workers), emitter);
         cout << "Farm created (M-Diagonal)" << endl;
         farm.wrap_around();
@@ -365,7 +373,7 @@ struct M_Diagonal_Stage: ff_node_t<shared_ptr<matrix_d>, shared_ptr<matrix_d>> {
         
         if (farm.run_and_wait_end() < 0){
             error("Running farm (M-Diagonal)\n");
-            return EOS;
+            return nullptr;
         }
 
         // cout << "Farm runned (M-Diagonal)" << endl;
@@ -391,15 +399,17 @@ struct M_Diagonal_Stage: ff_node_t<shared_ptr<matrix_d>, shared_ptr<matrix_d>> {
         // }
         // farm.wait();
         // delete M;
-
-        return &M;
+        matrix_d& matrix = **M;
+        ff_send_out(M);
+        return EOS;
     }
 };
 
-struct SaveMatrix_Stage: ff_node_t<shared_ptr<matrix_d>>{
-    shared_ptr<matrix_d> *svc(shared_ptr<matrix_d> task){
-        uint16_t size = task->size();
-        SaveMatrixToFile(task, size, "matrix_prime.txt");
+struct SaveMatrix_Stage: ff_node_t<shared_ptr<matrix_d>, void>{
+    void *svc(shared_ptr<matrix_d> *task) {
+        matrix_d& matrix = **task;
+        uint16_t size = (*task)->size();
+        SaveMatrixToFile(*task, size, "matrix_prime.txt");
         return EOS;
     }
 };
@@ -461,3 +471,4 @@ int main(int argc, char* arg[]){
     // SPLIT THE PROBLEME WITH THE PIPE()
     // CREATE THE FARM FOR GENERETING THE DOT PRODUCT
 }
+

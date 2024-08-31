@@ -441,17 +441,10 @@ int main(int argc, char* arg[]){
     ffTime(START_TIME);
 
     // Stage 1
-    // Create the matrix M
-    // Fill the matrix M with the values (m+1)/N
     CreateMatrix s1(N, W);
-    //
-    //Resources resources = CalculateResources(W, 1, N);
-    //
-    //M_Diagonal_Stage s2(N, 1, W, resources.Z, resources.D);
-    //
     ff_Pipe<> pipe(s1);
     //pipe.add_stage(s1);
-    //Stage 2
+    //Stage 2 -> N - K
     vector<unique_ptr<ff_node>> workers;
     for (uint16_t k = 1; k < N; k++){
         Resources resources = CalculateResources(W, k, N);
@@ -459,25 +452,16 @@ int main(int argc, char* arg[]){
         //cout << "DiagonalStage-Workers Z: " << resources.Z << " DotProductStage-Workers D: " << resources.D << endl;
         //cout << endl;
         ff_node* worker = new M_Diagonal_Stage(N, k, W, resources.Z, resources.D);
-        
         pipe.add_stage(*worker);
     }
-    // Save the matrix to a file
+    // Last Stage
     SaveMatrix_Stage s3;
     pipe.add_stage(s3);
-    //int task = 0;
     if (pipe.run_and_wait_end() < 0){
         error("Running pipe\n");
         return -1;
     }
     ffTime(STOP_TIME);
     cout << "Time: " << ffTime(GET_TIME)/1000.0 << endl;
-
-    // CREATE MATRIX M (Stage 1)
-    // STAGE 1 create all subelements of the matrix for the diagoanl
-    // STAGE 2 create the dot product of the matrix
-
-    // SPLIT THE PROBLEME WITH THE PIPE()
-    // CREATE THE FARM FOR GENERETING THE DOT PRODUCT
 }
 

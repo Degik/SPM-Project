@@ -98,33 +98,40 @@ int main(int argc, char* argv[]){
         return -1;
     }
     
-    //Timer to measure the creation and filling of the matrix
-    auto start = std::chrono::high_resolution_clock::now();
-    // Create the matrix M
-    vector_d M = vector_d(N*N, 0.0);
-    // Fill the matrix M with the values
-    FillMatrix(&M, N);
-    // Save the matrix to a file if BENCHMARK is not defined
-    #ifdef DEBUG
-    SaveMatrixToFile(&M, N, "matrix_mpi.txt");
-    #endif
-    //
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed_seconds_matrix = end - start;
-    printf("Matrix created and filled in: %f seconds\n", elapsed_seconds_matrix.count());
-
     //
     MPI_Init(&argc, &argv);                                    // Initialize the MPI environment
-    //Timer to measure the wavefront algorithm
+
+    //Timer to measure the creation and filling of the matrix
     double start_mpi_timer = MPI_Wtime();
-
-
+    double end_mpi_timer;
+    // Create the matrix M
+    vector_d M;
+    //
     int rank, number_of_processes;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);                      // Get the rank of the process
     MPI_Comm_size(MPI_COMM_WORLD, &number_of_processes);       // Get the number of processes
 
-    MPI_Bcast(&N, 1, MPI_INT, 0, MPI_COMM_WORLD);              // Broadcast the size of the matrix
-    MPI_Bcast(M.data(), N*N, MPI_DOUBLE, 0, MPI_COMM_WORLD);   // Broadcast the matrix
+    if (rank == 0){
+        M = vector_d(N*N, 0.0);
+        // Fill the matrix M with the values
+        FillMatrix(&M, N);
+        // Save the matrix to a file if BENCHMARK is not defined
+        #ifdef DEBUG
+            SaveMatrixToFile(&M, N, "matrix_mpi.txt");
+        #endif
+        //
+        end_mpi_timer = MPI_Wtime();
+        double passed_time = end_mpi_timer - start_mpi_timer;
+        std::cout << "Matrix created and filled in: " << passed_time << std::endl;
+    } else {
+        M.resize(N*N);
+    }
+
+    // Send the matrix to the workers
+    MPI_Bcast(M.data(), N*N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+    //Timer to measure the wavefront algorithm
+    start_mpi_timer = MPI_Wtime();
 
     // Iterate over the k (diagonal distance)
     for (int k = 1; k < N; k++){
@@ -143,16 +150,21 @@ int main(int argc, char* argv[]){
 
                 // Send task to other processes
                 int next_task = 0;
-                for (int i = 1; i < number_of_processes && next_task < task_list.size(); i++){
-                    MPI_Send(&task_list[next_task], sizeof(Task), MPI_BYTE, i, TAG_TASK, MPI_COMM_WORLD);
-                    next_task++;
-                    active_workers++;
+                for (int i = 1; i < number_of_processes; i++){
+                    if (next_task < task_list.size()){
+                        MPI_Send(&task_list[next_task], sizeof(Task), MPI_BYTE, i, TAG_TASK, MPI_COMM_WORLD);
+                        next_task++;
+                        active_workers++;
+                    } else {
+                        // Send the TAG_TERMINATE to the worker
+                        MPI_Send(NULL, 0, MPI_BYTE, i, TAG_TERMINATE, MPI_COMM_WORLD);
+                    }
                 }
 
-                // Take the rusults from the staks
+                // Take the results from the staks
                 while (active_workers > 0){
                     Task_Result task_result;
-                    MPI_Recv(&task_result, sizeof(Task_Result), MPI_BYTE, MPI_ANY_TAG, MPI_ANY_SOURCE, MPI_COMM_WORLD, &status);
+                    MPI_Recv(&task_result, sizeof(Task_Result), MPI_BYTE, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
                     //Update the value
                     int result_idx = task_result.m * N + task_result.m + k;
@@ -170,6 +182,11 @@ int main(int argc, char* argv[]){
                     }
                 }
 
+                // for (int worker_rank : idle_workers){
+                //     std::cout << "Sending terminate to worker " << worker_rank << std::endl;
+                //     MPI_Send(NULL, 0, MPI_BYTE, worker_rank, TAG_TERMINATE, MPI_COMM_WORLD);
+                // }
+
                 //Reults vector
                 std::vector<double> k_diagonal(N-k, 0.0);
                 //Take all the new results
@@ -178,15 +195,15 @@ int main(int argc, char* argv[]){
                 }
 
                 #ifdef DEBUG
-                std::cout << "Master Worker - " << "Sending the new k-" << k << "-diagonal" << std::endl;
-                std::cout << "{";
-                std::cout << std::fixed << std::showpoint;
-                std::cout << std::setprecision(6);
-                for (int i = 0; i < k_diagonal.size(); i++){
-                    std::cout << " ";
-                    std::cout << k_diagonal[i]; 
-                }
-                std::cout << " }" << std::endl;
+                    std::cout << "Master Worker - " << "Sending the new k-" << k << "-diagonal" << std::endl;
+                    std::cout << "{";
+                    std::cout << std::fixed << std::showpoint;
+                    std::cout << std::setprecision(6);
+                    for (int i = 0; i < k_diagonal.size(); i++){
+                        std::cout << " ";
+                        std::cout << k_diagonal[i]; 
+                    }
+                    std::cout << " }" << std::endl;
                 #endif
 
                 MPI_Bcast(k_diagonal.data(), N-k, MPI_DOUBLE, 0, MPI_COMM_WORLD);   // Sends to all the computed k_diagonal
@@ -196,7 +213,7 @@ int main(int argc, char* argv[]){
                 // The other processes receive the work from the master process
                 Task task;
                 MPI_Status status;
-                MPI_Recv(&task, sizeof(Task), MPI_BYTE, MPI_ANY_TAG, MPI_ANY_SOURCE, MPI_COMM_WORLD, &status);
+                MPI_Recv(&task, sizeof(Task), MPI_BYTE, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
                 if (status.MPI_TAG == TAG_TERMINATE){ break; }          // In case we interrupt the worker
 
@@ -204,7 +221,7 @@ int main(int argc, char* argv[]){
                 double sum = DotProductWithCbrt(M, k, task.m, N);       
 
                 #ifdef DEBUG
-                std::cout << "I'm the worker " << rank << " and i've calculated the sum like: " << sum << std::endl;
+                    std::cout << "I'm the worker " << rank << " and i've calculated the sum like: " << sum << std::endl;
                 #endif
 
                 Task_Result result = {task.m, sum};                     // Data to send
@@ -212,7 +229,7 @@ int main(int argc, char* argv[]){
                 MPI_Send(&result, sizeof(Task_Result), MPI_BYTE, 0, TAG_TASK, MPI_COMM_WORLD);
             }
             std::vector<double> k_diagonal(N-k, 0.0);
-            MPI_Bcast(k_diagonal.data(), N*N, MPI_DOUBLE, 0, MPI_COMM_WORLD);    // Receive the new k_diagonal
+            MPI_Bcast(k_diagonal.data(), N-k, MPI_DOUBLE, 0, MPI_COMM_WORLD);    // Receive the new k_diagonal
             // Update the matrix with the current k_diagonal
             for (int i = 0; i < N - k; ++i) {
                 M[i * N + i + k] = k_diagonal[i];
@@ -226,7 +243,7 @@ int main(int argc, char* argv[]){
         #ifdef DEBUG
             SaveMatrixToFile(&M, N, "matrix_mpi_result.txt");
         #endif
-        double end_mpi_timer = MPI_Wtime();
+        end_mpi_timer = MPI_Wtime();
         double passed_time = end_mpi_timer - start_mpi_timer;
         std::cout << "Time to compute the matrix: " << passed_time << std::endl;
     }

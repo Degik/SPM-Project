@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <iostream>
 
-#define DEBUG
+//#define DEBUG
 #define TAG_TERMINATE 1
 #define TAG_TASK 0
 
@@ -222,15 +222,14 @@ int main(int argc, char* argv[]){
         MPI_Barrier(MPI_COMM_WORLD);
     }
 
-    #ifdef DEBUG
     if (rank == 0){
-        
-        SaveMatrixToFile(&M, N, "matrix_mpi_result.txt");
+        #ifdef DEBUG
+            SaveMatrixToFile(&M, N, "matrix_mpi_result.txt");
+        #endif
+        double end_mpi_timer = MPI_Wtime();
+        double passed_time = end_mpi_timer - start_mpi_timer;
+        std::cout << "Time to compute the matrix: " << passed_time << std::endl;
     }
-    #endif
-    double end_mpi_timer = MPI_Wtime();
-    double passed_time = end_mpi_timer - start_mpi_timer;
-    std::cout << "Time to compute the matrix: " << passed_time << std::endl;
     MPI_Finalize();                                                     // Finalize the MPI environment
     return 0;
 }

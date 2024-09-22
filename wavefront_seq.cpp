@@ -86,5 +86,5 @@ int main(int argc, char* argv[]){
     auto stop_wavefront = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed_time = stop_wavefront - start_wavefront;
     std::cout << "Time passed to calculate the wavefront: " << elapsed_time.count() << " seconds" << std::endl;
-
+    return 0;
 }

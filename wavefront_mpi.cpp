@@ -97,6 +97,9 @@ int main(int argc, char* argv[]){
         printf("N must be greater than 1\n");
         return -1;
     }
+    //Set precison
+    std::cout << std::fixed << std::showpoint;
+    std::cout << std::setprecision(6);
     
     //
     MPI_Init(&argc, &argv);                                    // Initialize the MPI environment
@@ -182,13 +185,8 @@ int main(int argc, char* argv[]){
                     }
                 }
 
-                // for (int worker_rank : idle_workers){
-                //     std::cout << "Sending terminate to worker " << worker_rank << std::endl;
-                //     MPI_Send(NULL, 0, MPI_BYTE, worker_rank, TAG_TERMINATE, MPI_COMM_WORLD);
-                // }
-
                 //Reults vector
-                std::vector<double> k_diagonal(N-k, 0.0);
+                vector_d k_diagonal(N-k, 0.0);
                 //Take all the new results
                 for (int i = 0; i < N - k; i++){
                     k_diagonal[i] = M[i * N + i + k];
@@ -197,8 +195,6 @@ int main(int argc, char* argv[]){
                 #ifdef DEBUG
                     std::cout << "Master Worker - " << "Sending the new k-" << k << "-diagonal" << std::endl;
                     std::cout << "{";
-                    std::cout << std::fixed << std::showpoint;
-                    std::cout << std::setprecision(6);
                     for (int i = 0; i < k_diagonal.size(); i++){
                         std::cout << " ";
                         std::cout << k_diagonal[i]; 
@@ -228,7 +224,7 @@ int main(int argc, char* argv[]){
 
                 MPI_Send(&result, sizeof(Task_Result), MPI_BYTE, 0, TAG_TASK, MPI_COMM_WORLD);
             }
-            std::vector<double> k_diagonal(N-k, 0.0);
+            vector_d k_diagonal(N-k, 0.0);
             MPI_Bcast(k_diagonal.data(), N-k, MPI_DOUBLE, 0, MPI_COMM_WORLD);    // Receive the new k_diagonal
             // Update the matrix with the current k_diagonal
             for (int i = 0; i < N - k; ++i) {

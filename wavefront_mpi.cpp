@@ -120,7 +120,7 @@ int main(int argc, char* argv[]){
         FillMatrix(&M, N);
         // Save the matrix to a file if BENCHMARK is not defined
         #ifdef DEBUG
-            SaveMatrixToFile(&M, N, "matrix_mpi.txt");
+            SaveMatrixToFile(&M, N, "matrix_mpi_normal.txt");
         #endif
         //
         end_mpi_timer = MPI_Wtime();
@@ -237,7 +237,7 @@ int main(int argc, char* argv[]){
 
     if (rank == 0){
         #ifdef DEBUG
-            SaveMatrixToFile(&M, N, "matrix_mpi_result.txt");
+            SaveMatrixToFile(&M, N, "matrix_mpi_results.txt");
         #endif
         end_mpi_timer = MPI_Wtime();
         double passed_time = end_mpi_timer - start_mpi_timer;

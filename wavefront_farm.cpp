@@ -1,16 +1,19 @@
 #include <cmath>
+#include <mutex>
+#include <thread>
 #include <vector>
 #include <chrono>
 #include <iomanip>
 #include <fstream>
 #include <iostream>
 #include <algorithm>
+#include <condition_variable>
 
 #include <ff/ff.hpp>
 #include <ff/farm.hpp>
 #include <ff/parallel_for.hpp>
 
-//#define DEBUG
+#define DEBUG
 
 using vector_d = std::vector<double>;
 
@@ -72,7 +75,7 @@ struct DiagonalWorker: ff::ff_node_t<DiagonalTask, void>{
 
         // Decrease the number of tasks
         task->tasks--;
-
+        delete task;
         return GO_ON;
     }
 };
@@ -92,13 +95,13 @@ struct DiagonalEmitter: ff::ff_monode_t<int, DiagonalTask>{
     DiagonalTask *svc(int*){
         // Send to the worker the index for the dot product zone
         for(int k = 1; k < N; k++){
-            std::atomic<int> tasks = {N-k};
+            std::atomic<int> tasks(N-k);
             for(int m = 0; m < N-k; m++){
                 ff_send_out(new DiagonalTask{k, m, m*N, (m+k)*N, M, std::ref(tasks)});
             }
             // Wait for the tasks to finish
-            while(tasks > 0){
-                continue;
+            while (tasks.load() > 0){
+                std::this_thread::yield();
             }
         }
         broadcast_task(EOS);
@@ -114,8 +117,18 @@ int main(int argc, char* argv[]){
         return -1;
     }
 
+    unsigned int max_threads = std::thread::hardware_concurrency();
+    #ifdef DEBUG
+        std::cout << "Max threads: " << max_threads << std::endl;
+    #endif
+
     const uint16_t N = atoi(argv[1]);
     const uint16_t W = atoi(argv[2]);
+
+    if(W > max_threads-1){
+        std::cout << "The number of workers is higher than the number of threads available" << std::endl;
+        return -1;
+    }
 
     // Create and fill the matrix
     // Process to create the matrix

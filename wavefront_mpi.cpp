@@ -1,4 +1,5 @@
 #include <mpi.h>
+#include <omp.h>
 #include <cmath>
 #include <chrono>
 #include <vector>
@@ -60,8 +61,11 @@ void SaveMatrixToFile(vector_d *M, uint16_t N, std::string filename){
 */
 double DotProductWithCbrt (const vector_d &M, int k, int m, int N){
     double sum = 0.0;
+    int row = m*N;
+    int col_t = (m+k)*N;
+    //#pragma omp parallel for
     for(int i = 0; i < k; i++){
-        sum += M[m*N+i+m] * M[(m+i+1)*N+m+k];
+        sum += M[row+i+m] * M[col_t+i+m+1];
     }
     return cbrt(sum);
 }
@@ -170,8 +174,10 @@ int main(int argc, char* argv[]){
                     MPI_Recv(&task_result, sizeof(Task_Result), MPI_BYTE, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
                     //Update the value
-                    int result_idx = task_result.m * N + task_result.m + k;
-                    M[result_idx] = task_result.value;
+                    int row = task_result.m * N + task_result.m + k;
+                    int col_t = (task_result.m + k) * N + task_result.m;
+                    M[row] = task_result.value;
+                    M[col_t] = task_result.value;
 
                     //Take the worker rank
                     int woker_rank = status.MPI_SOURCE;
@@ -229,6 +235,10 @@ int main(int argc, char* argv[]){
             // Update the matrix with the current k_diagonal
             for (int i = 0; i < N - k; ++i) {
                 M[i * N + i + k] = k_diagonal[i];
+            }
+            // Update the matrix with the current k_diagonal transposed
+            for (int i = 0; i < N - k; ++i) {
+                M[(i + k) * N + i] = k_diagonal[i];
             }
         }
         // Wait for all workers

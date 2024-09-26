@@ -6,7 +6,7 @@ INCLUDES = -I ../fastflow/
 OPTFLAGS = -O3
 
 # Targets
-TARGETS = wavefront_pf wavefront_pf_cache wavefront_farm wavefront_seq wavefront_mpi wavefront_mpi_cache wavefront_fst wavefront_seq_cache
+TARGETS = wavefront_pf wavefront_pf_cache wavefront_farm wavefront_seq wavefront_mpi wavefront_mpi_cache wavefront_seq_cache
 
 # Source files
 SRC_PF = wavefront_pf.cpp
@@ -15,7 +15,6 @@ SRC_FARM = wavefront_farm.cpp
 SRC_SEQ = wavefront_seq.cpp
 SRC_MPI = wavefront_mpi.cpp
 SRC_MPICACHE = wavefront_mpi_cache.cpp
-SRC_FST = wavefront_fst.cpp
 SRC_SEQCACHE = wavefront_seq_cache.cpp
 
 # Default target
@@ -40,9 +39,6 @@ wavefront_mpi: $(SRC_MPI)
 
 wavefront_mpi_cache: $(SRC_MPICACHE)
 	$(MPICXX) $(SRC_MPICACHE) -o $@ -std=c++20 -w -g
-
-wavefront_fst: $(SRC_FST)
-	$(CXX) $(SRC_FST) -o $@ $(CXXFLAGS) $(INCLUDES)
 
 wavefront_seq_cache: $(SRC_SEQCACHE)
 	$(CXX) $(SRC_SEQCACHE) -o $@ $(CXXFLAGS)

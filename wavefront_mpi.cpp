@@ -197,17 +197,6 @@ int main(int argc, char* argv[]){
                 for (int i = 0; i < N - k; i++){
                     k_diagonal[i] = M[i * N + i + k];
                 }
-
-                #ifdef DEBUG
-                    std::cout << "Master Worker - " << "Sending the new k-" << k << "-diagonal" << std::endl;
-                    std::cout << "{";
-                    for (int i = 0; i < k_diagonal.size(); i++){
-                        std::cout << " ";
-                        std::cout << k_diagonal[i]; 
-                    }
-                    std::cout << " }" << std::endl;
-                #endif
-
                 MPI_Bcast(k_diagonal.data(), N-k, MPI_DOUBLE, 0, MPI_COMM_WORLD);   // Sends to all the computed k_diagonal
 
         } else {
@@ -220,11 +209,7 @@ int main(int argc, char* argv[]){
                 if (status.MPI_TAG == TAG_TERMINATE){ break; }          // In case we interrupt the worker
 
                 // Compute the dot product and the cubic root on the sum
-                double sum = DotProductWithCbrt(M, k, task.m, N);       
-
-                #ifdef DEBUG
-                    std::cout << "I'm the worker " << rank << " and i've calculated the sum like: " << sum << std::endl;
-                #endif
+                double sum = DotProductWithCbrt(M, k, task.m, N);
 
                 Task_Result result = {task.m, sum};                     // Data to send
 

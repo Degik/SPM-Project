@@ -10,7 +10,7 @@
 #include <ff/farm.hpp>
 #include <ff/parallel_for.hpp>
 
-#define DEBUG
+//#define DEBUG
 
 using vector_d = std::vector<double>;
 

@@ -5,7 +5,7 @@
 #include <fstream>
 #include <iostream>
 
-#define DEBUG
+//#define DEBUG
 
 using vector_d = std::vector<double>;
 

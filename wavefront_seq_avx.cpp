@@ -36,8 +36,10 @@ void CreateMatrix(vector_d &M, uint16_t N){
     // Crete the value
     __m256d zero = _mm256_set1_pd(0.0);
     //
+    int i = 0;
+    int total = N * N;
     // https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#ig_expand=10,0,5812,6534&text=_mm256_storeu_pd
-    for(int i = 0; i < N * N; i+=4){
+    for(; i < total - 4; i += 4){
         _mm256_storeu_pd(&M[i], zero);
     }
 }
@@ -63,19 +65,19 @@ void ComputeWavefrontAVX(vector_d *M, uint16_t N){
             for (; i <= k - 4; i += 4){
                 __m256d vec1 = _mm256_loadu_pd(&(*M)[row + i + m]);         // Load 4 elements from the row
                 __m256d vec2 = _mm256_loadu_pd(&(*M)[col_t + i + m + 1]);   // Load 4 elements from the column_transpose
-                __m256d prod = _mm256_mul_pd(vec1, vec2);                   // Multiply the two vectors
-                sum_vec = _mm256_add_pd(sum_vec, prod);                     // Add the result to the sum
+                __m256d prod = _mm256_mul_pd(vec1, vec2);                   // Multiply the two vectors -> prod = [a*b, c*d, e*f, g*h]
+                sum_vec = _mm256_add_pd(sum_vec, prod);                     // Move the results to the sum_vector
             }
             // Extract the sum from the vector
-            __m128d sum_high = _mm256_extractf128_pd(sum_vec, 1);           // Extract the high 128 bits - Convert to 128 bit
-            __m128d sum_low = _mm256_castpd256_pd128(sum_vec);              // Cast to 128 bit vector (low)
-            __m128d sum_128 = _mm_add_pd(sum_low, sum_high);                // Add the two 128 bit
-            sum_128 = _mm_hadd_pd(sum_128, sum_128);                        // Horizontal add
+            __m128d sum_high = _mm256_extractf128_pd(sum_vec, 1);           // Extract the last 128 bits - Latency 3 cycles - Throughput 1 cycle
+            __m128d sum_low = _mm256_castpd256_pd128(sum_vec);              // Take the first 128 bits without cost - Latency 1 cycle
+            __m128d sum_128 = _mm_add_pd(sum_low, sum_high);                // Sum the two 128 bits vectos -> sum_low = [a, b] sum_high = [c, d] -> sum_128 = [a+c, b+d]
+            sum_128 = _mm_hadd_pd(sum_128, sum_128);                        // Horizontal add -> sum_128_before = [a+c, b+d] -> sum_128 = [a+c+b+d, a+c+b+d]
             double sum;
-            _mm_store_sd(&sum, sum_128);
+            _mm_store_sd(&sum, sum_128);                                    // Store the result in a double
             element += sum;
 
-            // Process the remaining elements
+            // Process the elements out of the block of 4
             for (; i < k; i++){
                 element += (*M)[row + i + m] * (*M)[col_t + i + m + 1];
             }

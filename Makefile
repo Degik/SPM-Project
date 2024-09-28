@@ -6,6 +6,7 @@ INCLUDES = -I ../fastflow/
 OPTFLAGS = -O3
 ADDFLAGS = -march=native -ffast-math
 AVXFLAGS = -mavx
+DEBUGFLAGS = -g
 
 # Targets
 TARGETS = wavefront_pf wavefront_pf_cache wavefront_farm wavefront_seq wavefront_mpi wavefront_seq_cache wavefront_seq_avx
@@ -43,7 +44,7 @@ wavefront_seq_cache: $(SRC_SEQCACHE)
 	$(CXX) $(SRC_SEQCACHE) -o $@ $(CXXFLAGS)
 
 wavefront_seq_avx: $(SRC_SEQAVX)
-	$(CXX) $(SRC_SEQAVX) -o $@ $(CXXFLAGS) $(AVXFLAGS)
+	$(CXX) $(SRC_SEQAVX) -o $@ $(CXXFLAGS) $(AVXFLAGS) $(DEBUGFLAGS)
 
 # Clean target
 clean:

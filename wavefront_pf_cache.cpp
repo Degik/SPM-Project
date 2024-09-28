@@ -30,7 +30,7 @@ vector_d* FillMatrix(vector_d *M, uint16_t N){
 
 /*!
     \name SaveMatrixPtrToFile
-    \param M shared_ptr<vector_d> M
+    \param M vector_d M
     \param N uint16_t N
     \param filename string filename
     \brief Save the matrix M to a file

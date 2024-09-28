@@ -21,7 +21,7 @@ typedef struct DiagonalTask{
     int k;
     int m;
     int row;   // m+N;
-    int col_t; // (m+k)*N
+    int col_t; //(m+k)*N
     vector_d &M;
     std::atomic<int> &tasks;
 };
@@ -42,7 +42,7 @@ vector_d* FillMatrix(vector_d *M, uint16_t N){
 
 /*!
     \name SaveMatrixPtrToFile
-    \param M shared_ptr<vector_d> M
+    \param M vector_d M
     \param N uint16_t N
     \param filename string filename
     \brief Save the matrix M to a file
@@ -61,6 +61,11 @@ void SaveMatrixToFile(vector_d *M, uint16_t N, std::string filename){
     file.close();
 }
 
+/*!
+    \name DiagonalWorker
+    \brief DiagonalWorker
+    \note DiagonalWorker - Calculate the current element in the diagonal
+*/
 struct DiagonalWorker: ff::ff_node_t<DiagonalTask, void>{
     void *svc(DiagonalTask *task){
         double element = 0.0;
@@ -84,7 +89,7 @@ struct DiagonalWorker: ff::ff_node_t<DiagonalTask, void>{
 /*!
     \name DiagonalEmitter
     \brief DiagonalEmitter
-    \note DiagonalEmitter
+    \note DiagonalEmitter - Emit the tasks for the workers to calculate the diagonal elements
 */
 struct DiagonalEmitter: ff::ff_monode_t<int, DiagonalTask>{
     vector_d &M;

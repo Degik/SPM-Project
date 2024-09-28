@@ -13,7 +13,7 @@ using vector_d = std::vector<double>;
 
 /*!
     \name SaveMatrixPtrToFile
-    \param M shared_ptr<vector_d> M
+    \param M vector_d M
     \param N uint16_t N
     \param filename string filename
     \brief Save the matrix M to a file
@@ -32,6 +32,13 @@ void SaveMatrixToFile(vector_d *M, uint16_t N, std::string filename){
     file.close();
 }
 
+/*!
+    \name CreateMatrix
+    \param M vector_d M
+    \param N uint16_t N
+    \brief Create the matrix M with the size N*N
+    \note Create the matrix M with the size N*N
+*/
 void CreateMatrix(vector_d &M, uint16_t N){
     // Crete the value
     __m256d zero = _mm256_set1_pd(0.0);
@@ -44,6 +51,13 @@ void CreateMatrix(vector_d &M, uint16_t N){
     }
 }
 
+/*!
+    \name FillMatrix
+    \param M vector_d M
+    \param N uint16_t N
+    \brief Fill the matrix M with the values
+    \note Fill the matrix M with the values
+*/
 void FillMatrix(vector_d *M, uint16_t N){
 
     for(int m = 0; m < N; m++){
@@ -51,6 +65,13 @@ void FillMatrix(vector_d *M, uint16_t N){
     }
 }
 
+/*!
+    \name ComputeWavefrontAVX
+    \param M vector_d M
+    \param N uint16_t N
+    \brief Compute the wavefront using AVX
+    \note Compute the wavefront using AVX - AVX 256 bits - 4 elements at a time
+*/
 void ComputeWavefrontAVX(vector_d *M, uint16_t N){
     for (int k = 1; k < N; k++){
         for(int m = 0; m < N-k; m++){

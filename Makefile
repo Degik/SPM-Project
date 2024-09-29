@@ -11,13 +11,15 @@ DEBUGFLAGS = -g
 # Targets
 TARGETS = wavefront_pf wavefront_pf_cache wavefront_farm wavefront_seq wavefront_mpi wavefront_seq_cache wavefront_seq_avx
 
-# Source files
+# Normal version
 SRC_PF = wavefront_pf.cpp
-SRC_PFCACHE = wavefront_pf_cache.cpp
 SRC_FARM = wavefront_farm.cpp
 SRC_SEQ = wavefront_seq.cpp
 SRC_MPI = wavefront_mpi.cpp
+# Cache version
+SRC_PFCACHE = wavefront_pf_cache.cpp
 SRC_SEQCACHE = wavefront_seq_cache.cpp
+# AVX version these includes cache version
 SRC_SEQAVX = wavefront_seq_avx.cpp
 
 # Default target
@@ -44,7 +46,7 @@ wavefront_seq_cache: $(SRC_SEQCACHE)
 	$(CXX) $(SRC_SEQCACHE) -o $@ $(CXXFLAGS)
 
 wavefront_seq_avx: $(SRC_SEQAVX)
-	$(CXX) $(SRC_SEQAVX) -o $@ $(CXXFLAGS) $(AVXFLAGS) $(DEBUGFLAGS)
+	$(CXX) $(SRC_SEQAVX) -o $@ $(CXXFLAGS) $(AVXFLAGS)
 
 # Clean target
 clean:

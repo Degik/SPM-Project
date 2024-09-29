@@ -52,10 +52,10 @@ wavefront_seq_avx: $(SRC_SEQAVX)
 numa:
 	$(CXX) $(SRC_PF) -o wavefront_pf $(CXXFLAGS) $(INCLUDES) $(ADDFLAGS)
 	$(CXX) $(SRC_FARM) -o wavefront_farm $(CXXFLAGS) $(INCLUDES) $(OPTFLAGS) $(ADDFLAGS)
-	$(CXX) $(SRC_SEQ) -o wavefront_seq $(CXXFLAGS)
+	$(CXX) $(SRC_SEQ) -o wavefront_seq $(CXXFLAGS) $(ADDFLAGS)
 	$(CXX) $(SRC_PFCACHE) -o wavefront_pf_cache $(CXXFLAGS) $(INCLUDES) $(OPTFLAGS) $(ADDFLAGS)
-	$(CXX) $(SRC_SEQCACHE) -o wavefront_seq_cache $(CXXFLAGS)
-	$(CXX) $(SRC_SEQAVX) -o wavefront_seq_avx $(CXXFLAGS) $(AVXFLAGS)
+	$(CXX) $(SRC_SEQCACHE) -o wavefront_seq_cache $(CXXFLAGS) $(ADDFLAGS)
+	$(CXX) $(SRC_SEQAVX) -o wavefront_seq_avx $(CXXFLAGS) $(AVXFLAGS) $(ADDFLAGS)
 # Rules for cluster
 cluster:
 	$(MPICXX) $(SRC_MPI) -o wavefront_mpi -std=c++20 -w

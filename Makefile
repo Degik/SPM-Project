@@ -50,12 +50,12 @@ wavefront_seq_avx: $(SRC_SEQAVX)
 
 # Rules for NUMA machines
 numa:
-	$(CXX) $(SRC_PF) -o wavefront_pf $(CXXFLAGS) $(INCLUDES) $(ADDFLAGS) -lnuma
-	$(CXX) $(SRC_FARM) -o wavefront_farm $(CXXFLAGS) $(INCLUDES) $(OPTFLAGS) $(ADDFLAGS) -lnuma
-	$(CXX) $(SRC_SEQ) -o wavefront_seq $(CXXFLAGS) -lnuma
-	$(CXX) $(SRC_PFCACHE) -o wavefront_pf_cache $(CXXFLAGS) $(INCLUDES) $(OPTFLAGS) $(ADDFLAGS) -lnuma
-	$(CXX) $(SRC_SEQCACHE) -o wavefront_seq_cache $(CXXFLAGS) -lnuma
-	$(CXX) $(SRC_SEQAVX) -o wavefront_seq_avx $(CXXFLAGS) $(AVXFLAGS) -lnuma
+	$(CXX) $(SRC_PF) -o wavefront_pf $(CXXFLAGS) $(INCLUDES) $(ADDFLAGS)
+	$(CXX) $(SRC_FARM) -o wavefront_farm $(CXXFLAGS) $(INCLUDES) $(OPTFLAGS) $(ADDFLAGS)
+	$(CXX) $(SRC_SEQ) -o wavefront_seq $(CXXFLAGS)
+	$(CXX) $(SRC_PFCACHE) -o wavefront_pf_cache $(CXXFLAGS) $(INCLUDES) $(OPTFLAGS) $(ADDFLAGS)
+	$(CXX) $(SRC_SEQCACHE) -o wavefront_seq_cache $(CXXFLAGS)
+	$(CXX) $(SRC_SEQAVX) -o wavefront_seq_avx $(CXXFLAGS) $(AVXFLAGS)
 # Rules for cluster
 cluster:
 	$(MPICXX) $(SRC_MPI) -o wavefront_mpi -std=c++20 -w

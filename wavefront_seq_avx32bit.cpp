@@ -45,7 +45,7 @@ void CreateMatrix(vector_d &M, uint16_t N){
     //
     int i = 0;
     int total = N * N;
-    // https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#ig_expand=10,0,5812,6534&text=_mm256_storeu_pd
+    // https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#ig_expand=10,0,5812,6534&text=_mm256_storeu_ps
     for(; i < total - 8; i += 8){
         _mm256_storeu_ps(&M[i], zero);
     }
@@ -91,13 +91,13 @@ void ComputeWavefrontAVX(vector_d *M, uint16_t N){
             }
             // Extract the sum from the vector
             __m128 sum_high = _mm256_extractf128_ps(sum_vec, 1);           // Extract the last 128 bits - Latency 3 cycles - Throughput 1 cycle
-            __m128 sum_low = _mm256_castps256_ps128(sum_vec);              // Take the first 128 bits without cost - Latency 1 cycle
+            __m128 sum_low = _mm256_castps256_ps128(sum_vec);              // Take the first 128 bits without cost - Latency 0 cycle
             __m128 sum_128 = _mm_add_ps(sum_low, sum_high);                // Sum the two 128 bits vectos -> sum_low = [a, b, c, d] sum_high = [e, f, g, h] -> sum_128 = [a+e, b+f, c+g, d+h]
             sum_128 = _mm_hadd_ps(sum_128, sum_128);                       // Horizontal add -> sum_128_before = [a+e, b+f, c+g, d+h] -> sum_128 = [a+e+b+f, c+g+d+h]
             // sum the elements of the vector
-            sum_128 = _mm_hadd_ps(sum_128, sum_128);                       // Horizontal add -> sum_128_before = [a+e+b+f, c+g+d+h] -> sum_128 = [a+e+b+f+c+g+d+h]
+            sum_128 = _mm_hadd_ps(sum_128, sum_128);                       // Horizontal add
             float sum;
-            _mm_store_ss(&sum, sum_128);                                   // Store the result in a double
+            _mm_store_ss(&sum, sum_128);                                   // Store the result in a float
             element += sum;
 
             // Process the elements out of the block of 8

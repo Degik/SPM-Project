@@ -12,36 +12,35 @@
 // FastFlow
 #include <ff/ff.hpp>
 #include <ff/farm.hpp>
-#include <ff/parallel_for.hpp>
 
 //#define DEBUG
 
 using vector_d = std::vector<double>;
+
+const int MIN_CHUNK_SIZE = 100;
 
 /*!
     \name DiagonalTask
     \brief DiagonalTask
     \note DiagonalTask - Calculate the current element in the diagonal
 */
-typedef struct DiagonalTask{
+struct DiagonalTask {
     int k;
-    int m;
-    int row;   // m+N;
-    int col_t; //(m+k)*N
+    int m_start;
+    int m_end;
     vector_d &M;
+    uint16_t N;
     std::atomic<int> &tasks;
 };
 
-// FillMatrix
 /*!
     \name FillMatrix
     \brief Fill the matrix M with the values
     \note Fill the matrix M with the values
 */
-vector_d* FillMatrix(vector_d *M, uint16_t N){
-    // Fill the diagonal elements (i,j) (where i == j) with (m+1)/N
-    for(int m = 0; m < N; m++){
-        (*M)[m*N+m] = static_cast<double>(m+1)/N; // M[m][m] = (m+1)/N
+vector_d* FillMatrix(vector_d *M, uint16_t N) {
+    for(int m = 0; m < N; m++) {
+        (*M)[m*N+m] = static_cast<double>(m+1)/N;
     }
     return M;
 }
@@ -54,13 +53,13 @@ vector_d* FillMatrix(vector_d *M, uint16_t N){
     \brief Save the matrix M to a file
     \note Save the matrix M to a file with the name filename
 */
-void SaveMatrixToFile(vector_d *M, uint16_t N, std::string filename){
+void SaveMatrixToFile(vector_d *M, uint16_t N, std::string filename) {
     std::ofstream file;
     file.open(filename);
     file << std::fixed << std::setprecision(6);
-    for(int i = 0; i < N; i++){
-        for(int j = 0; j < N; j++){
-            file << (*M)[i*N+j] << " ";  // M[i][j]
+    for(int i = 0; i < N; i++) {
+        for(int j = 0; j < N; j++) {
+            file << (*M)[i*N+j] << " "; // M[i][j]
         }
         file << std::endl;
     }
@@ -72,46 +71,52 @@ void SaveMatrixToFile(vector_d *M, uint16_t N, std::string filename){
     \brief DiagonalWorker
     \note DiagonalWorker - Calculate the current element in the diagonal
 */
-struct DiagonalWorker: ff::ff_node_t<DiagonalTask, void>{
-    void *svc(DiagonalTask *task){
-        double element = 0.0;
-        for(int i = 0; i < task->k; i++){
-            element += (task->M)[task->row+i+task->m] * (task->M)[task->col_t+i+task->m+1];
+struct DiagonalWorker : ff::ff_node_t<DiagonalTask> {
+    DiagonalTask* svc(DiagonalTask *task) {
+        for (int m = task->m_start; m < task->m_end; m++) { // Calculate the current element in the diagonal (Chunck block)
+            int row = m * task->N;
+            int col_t = (m + task->k) * task->N;
+            double element = 0.0;
+            for (int i = 0; i < task->k; i++) {
+                element += task->M[row + i + m] * task->M[col_t + i + m + 1];
+            }
+            double new_element = std::cbrt(element);
+            task->M[row + m + task->k] = new_element;
+            task->M[col_t + m] = new_element;
         }
-        // Calculate the cubic root
-        double new_element = std::cbrt(element);
-        //Update the matrix
-        (task->M)[task->row+task->m+task->k] = new_element;
-        (task->M)[task->col_t+task->m] = new_element;
-
-        // Decrease the number of tasks
-        task->tasks--;
+        task->tasks--; // Decrease the number of tasks
         delete task;
         return GO_ON;
     }
 };
-
 
 /*!
     \name DiagonalEmitter
     \brief DiagonalEmitter
     \note DiagonalEmitter - Emit the tasks for the workers to calculate the diagonal elements
 */
-struct DiagonalEmitter: ff::ff_monode_t<int, DiagonalTask>{
+struct DiagonalEmitter : ff::ff_monode_t<int, DiagonalTask> {
     vector_d &M;
     uint16_t N;
+    int W;
 
-    DiagonalEmitter(vector_d &M, uint16_t N) : M(M), N(N) {}
+    DiagonalEmitter(vector_d &M, uint16_t N, int num_workers) : M(M), N(N), W(W) {}
 
-    DiagonalTask *svc(int*){
-        // Send to the worker the index for the dot product zone
-        for(int k = 1; k < N; k++){
-            std::atomic<int> tasks(N-k);
-            for(int m = 0; m < N-k; m++){
-                ff_send_out(new DiagonalTask{k, m, m*N, (m+k)*N, M, std::ref(tasks)});
+    DiagonalTask* svc(int*) {
+        for (int k = 1; k < N; k++) {
+            int total_m = N - k;
+            int num_tasks = std::min(W, total_m);                                           // Number of tasks
+            int chunk_size = (total_m + num_tasks - 1) / num_tasks;                         // Chunk size for each task
+            std::atomic<int> tasks(num_tasks);                                              // Atomic counter for the tasks           
+            int m_start = 0, m_end = 0;
+            for (int task_id = 0; task_id < num_tasks; task_id++) {                         // Create the tasks and send them to the workers
+                m_start = task_id * chunk_size;                                             // Start index  
+                m_end = std::min(m_start + chunk_size, total_m);                            // End index
+                ff_send_out(new DiagonalTask{k, m_start, m_end, M, N, std::ref(tasks)});    // Send the task to the worker
             }
+
             // Wait for the tasks to finish
-            while (tasks.load() > 0){
+            while (tasks.load() > 0) {
                 std::this_thread::yield();
             }
         }
@@ -120,11 +125,9 @@ struct DiagonalEmitter: ff::ff_monode_t<int, DiagonalTask>{
     }
 };
 
-
-int main(int argc, char* argv[]){
-    // N, W
+int main(int argc, char* argv[]) {
     if (argc != 3) {
-        std::cout << "Usage: " << argv[0] << "N (Size N*N) W (Workers)" << std::endl;
+        std::cout << "Usage: " << argv[0] << " N (Size N*N) W (Workers)" << std::endl;
         return -1;
     }
 
@@ -149,39 +152,38 @@ int main(int argc, char* argv[]){
     // Fill the matrix
     FillMatrix(&M, N);
     #ifdef DEBUG
-        SaveMatrixToFile(&M, N, "matrix_farm_normal.txt");
+        SaveMatrixToFile(&M, N, "matrix_farm_chunk_normal.txt");
     #endif
     auto stop = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> passed_time = stop - start;
     std::cout << "Matrix created and filled in: " << passed_time.count() << " seconds" << std::endl;
 
-    // Start the timer
+
     ff::ffTime(ff::START_TIME);
-    // Create workers
+
     std::vector<std::unique_ptr<ff::ff_node>> workers;
-    for(int i = 0; i < W; i++){
+    for(int i = 0; i < W; i++) {
         workers.push_back(std::make_unique<DiagonalWorker>());
     }
-    // Create the farm
+
     ff::ff_Farm<DiagonalTask> farm(std::move(workers));
     farm.remove_collector();
     farm.wrap_around();
     farm.set_scheduling_ondemand();
-    // Create the emitter
-    DiagonalEmitter emitter(M, N);
-    //
+
+    DiagonalEmitter emitter(M, N, W);
     farm.add_emitter(emitter);
-    // Run the farm
-    if(farm.run_and_wait_end() < 0){
+
+    if(farm.run_and_wait_end() < 0) {
         ff::error("Running farm");
         return -1;
     }
-    
+
     #ifdef DEBUG
-        SaveMatrixToFile(&M, N, "matrix_farm_results.txt");
+        SaveMatrixToFile(&M, N, "matrix_farm_chunk_results.txt");
     #endif
     ff::ffTime(ff::STOP_TIME);
     std::cout << "Time passed to calculate the wavefront: " << ff::ffTime(ff::GET_TIME)/1000.0 << " seconds" << std::endl;
-    return 0;
 
+    return 0;
 }

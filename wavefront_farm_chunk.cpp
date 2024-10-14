@@ -13,11 +13,11 @@
 #include <ff/ff.hpp>
 #include <ff/farm.hpp>
 
-#define DEBUG
+//#define DEBUG
 
 using vector_d = std::vector<double>;
 
-const int MIN_CHUNK_SIZE = 100;
+const int MIN_CHUNK_SIZE = 512;
 
 /*!
     \name DiagonalTask

@@ -67,7 +67,7 @@ numa:
 	$(CXX) $(SRC_SEQCACHE) -o wavefront_seq_cache $(CXXFLAGS) $(ADDFLAGS) $(OPTFLAGS)
 	$(CXX) $(SRC_SEQAVX64) -o wavefront_seq_avx64bit $(CXXFLAGS) $(AVXFLAGS) $(ADDFLAGS) -w $(OPTFLAGS)
 	$(CXX) $(SRC_SEQAVX32) -o wavefront_seq_avx32bit $(CXXFLAGS) $(AVXFLAGS) $(ADDFLAGS) -w $(OPTFLAGS)
-	$(CXX) $(SRC_FARM_CHUNK) -o wavefront_farm_chunk $(CXXFLAGS) $(INCLUDES) $(ADDFLAGS) -w $(OPTFLAGS) $(VECTORIZEFLAGS)
+	$(CXX) $(SRC_FARM_CHUNK) -o wavefront_farm_chunk $(CXXFLAGS) $(INCLUDES) $(ADDFLAGS) -w $(OPTFLAGS)
 # Rules for cluster
 cluster:
 	$(MPICXX) $(SRC_MPI) -o wavefront_mpi -std=c++20 -w

@@ -13,7 +13,7 @@
 #include <ff/ff.hpp>
 #include <ff/farm.hpp>
 
-//#define DEBUG
+#define DEBUG
 
 using vector_d = std::vector<double>;
 

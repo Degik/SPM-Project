@@ -10,7 +10,7 @@ DEBUGFLAGS = -g
 VECTORIZEFLAGS = -ftree-vectorize -fopt-info-vec
 
 # Targets
-TARGETS = wavefront_pf wavefront_pf_cache wavefront_farm wavefront_seq wavefront_mpi wavefront_seq_cache wavefront_seq_avx64bit wavefront_seq_avx32bit wavefront_farm_chunk
+TARGETS = wavefront_pf wavefront_pf_cache wavefront_farm wavefront_seq wavefront_mpi wavefront_seq_cache wavefront_seq_avx64bit wavefront_seq_avx32bit
 
 # Normal version
 SRC_PF = wavefront_pf.cpp
@@ -20,7 +20,6 @@ SRC_MPI = wavefront_mpi.cpp
 SRC_FARM = wavefront_farm.cpp
 SRC_PFCACHE = wavefront_pf_cache.cpp
 SRC_SEQCACHE = wavefront_seq_cache.cpp
-SRC_FARM_CHUNK = wavefront_farm_chunk.cpp
 # AVX version these includes cache version
 SRC_SEQAVX64 = wavefront_seq_avx64bit.cpp
 SRC_SEQAVX32 = wavefront_seq_avx32bit.cpp
@@ -53,9 +52,6 @@ wavefront_seq_avx64bit: $(SRC_SEQAVX64)
 wavefront_seq_avx32bit: $(SRC_SEQAVX32)
 	$(CXX) $(SRC_SEQAVX32) -o $@ $(CXXFLAGS) $(AVXFLAGS)
 
-wavefront_farm_chunk: $(SRC_FARM_CHUNK)
-	$(CXX) $(SRC_FARM_CHUNK) -o $@ $(CXXFLAGS) $(INCLUDES) $(OPTFLAGS) $(ADDFLAGS)
-
 
 
 # Rules for NUMA machines
@@ -67,10 +63,9 @@ numa:
 	$(CXX) $(SRC_SEQCACHE) -o wavefront_seq_cache $(CXXFLAGS) $(ADDFLAGS) $(OPTFLAGS)
 	$(CXX) $(SRC_SEQAVX64) -o wavefront_seq_avx64bit $(CXXFLAGS) $(AVXFLAGS) $(ADDFLAGS) -w $(OPTFLAGS)
 	$(CXX) $(SRC_SEQAVX32) -o wavefront_seq_avx32bit $(CXXFLAGS) $(AVXFLAGS) $(ADDFLAGS) -w $(OPTFLAGS)
-	$(CXX) $(SRC_FARM_CHUNK) -o wavefront_farm_chunk $(CXXFLAGS) $(INCLUDES) $(ADDFLAGS) -w $(OPTFLAGS)
 # Rules for cluster
 cluster:
-	$(MPICXX) $(SRC_MPI) -o wavefront_mpi -std=c++20 -w
+	$(MPICXX) $(SRC_MPI) -o wavefront_mpi -std=c++20 $(ADDFLAGS) $(OPTFLAGS)
 
 # Clean target
 clean:

@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+    <defs>
+      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="3" dy="3" stdDeviation="2" flood-opacity="0.3"/>
+      </filter>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#444"/>
+      </marker>
+    </defs>
+    
+    <rect width="800" height="600" fill="#f0f0f0"/>
+    
+    <!-- Master Process -->
+    <g transform="translate(350, 50)">
+      <rect width="120" height="80" rx="10" fill="#FF9999" stroke="#CC6666" stroke-width="2" filter="url(#shadow)"/>
+      <text x="60" y="30" text-anchor="middle" font-size="14" font-weight="bold">Master Process</text>
+      <text x="60" y="50" text-anchor="middle" font-size="12">- Distributes tasks</text>
+      <text x="60" y="65" text-anchor="middle" font-size="12">- Collects results</text>
+    </g>
+    
+    <!-- Worker Processes -->
+    <g transform="translate(100, 200)">
+      <rect width="120" height="80" rx="10" fill="#99FF99" stroke="#66CC66" stroke-width="2" filter="url(#shadow)"/>
+      <text x="60" y="30" text-anchor="middle" font-size="14" font-weight="bold">Worker 1</text>
+      <text x="60" y="50" text-anchor="middle" font-size="12">- Computes tasks</text>
+      <text x="60" y="65" text-anchor="middle" font-size="12">- Updates local M</text>
+    </g>
+    
+    <g transform="translate(350, 200)">
+      <rect width="120" height="80" rx="10" fill="#99FF99" stroke="#66CC66" stroke-width="2" filter="url(#shadow)"/>
+      <text x="60" y="30" text-anchor="middle" font-size="14" font-weight="bold">Worker 2</text>
+      <text x="60" y="50" text-anchor="middle" font-size="12">- Computes tasks</text>
+      <text x="60" y="65" text-anchor="middle" font-size="12">- Updates local M</text>
+    </g>
+    
+    <g transform="translate(600, 200)">
+      <rect width="120" height="80" rx="10" fill="#99FF99" stroke="#66CC66" stroke-width="2" filter="url(#shadow)"/>
+      <text x="60" y="30" text-anchor="middle" font-size="14" font-weight="bold">Worker N</text>
+      <text x="60" y="50" text-anchor="middle" font-size="12">- Computes tasks</text>
+      <text x="60" y="65" text-anchor="middle" font-size="12">- Updates local M</text>
+    </g>
+    
+    <!-- Matrix M (now distributed) -->
+    <g transform="translate(325, 400)">
+      <rect width="150" height="100" rx="10" fill="#99CCFF" stroke="#6699CC" stroke-width="2" filter="url(#shadow)"/>
+      <text x="75" y="30" text-anchor="middle" font-size="14" font-weight="bold">Distributed M</text>
+      <text x="75" y="50" text-anchor="middle" font-size="12">- Local copies in</text>
+      <text x="75" y="65" text-anchor="middle" font-size="12">all processes</text>
+      <text x="75" y="80" text-anchor="middle" font-size="12">- Synced via MPI_Bcast</text>
+    </g>
+    
+    <!-- Communication Arrows -->
+    <!-- Master to Workers -->
+    <line x1="410" y1="130" x2="160" y2="200" stroke="#FF6600" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    <line x1="410" y1="130" x2="410" y2="200" stroke="#FF6600" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    <line x1="410" y1="130" x2="660" y2="200" stroke="#FF6600" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    
+    <!-- Workers to Master -->
+    <line x1="160" y1="280" x2="410" y2="400" stroke="#0066FF" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    <line x1="410" y1="280" x2="410" y2="400" stroke="#0066FF" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    <line x1="660" y1="280" x2="410" y2="400" stroke="#0066FF" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    
+    <!-- MPI_Bcast Arrows -->
+    <line x1="410" y1="130" x2="160" y2="200" stroke="#990099" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+    <line x1="410" y1="130" x2="410" y2="200" stroke="#990099" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+    <line x1="410" y1="130" x2="660" y2="200" stroke="#990099" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+    <line x1="410" y1="130" x2="400" y2="400" stroke="#990099" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+    
+    <!-- Labels -->
+    <text x="250" y="150" transform="rotate(-30 250,150)" font-size="12" fill="#FF6600">MPI_Send (Tasks)</text>
+    <text x="570" y="150" transform="rotate(30 570,150)" font-size="12" fill="#FF6600">MPI_Send (Tasks)</text>
+    <text x="250" y="350" transform="rotate(30 250,350)" font-size="12" fill="#0066FF">MPI_Send (Results)</text>
+    <text x="570" y="350" transform="rotate(-30 570,350)" font-size="12" fill="#0066FF">MPI_Send (Results)</text>
+    
+    <!-- MPI_Bcast Label -->
+    <g transform="translate(420, 310)">
+      <rect width="160" height="50" fill="white" stroke="#990099" rx="5"/>
+      <text x="80" y="20" text-anchor="middle" font-size="14" font-weight="bold" fill="#990099">MPI_Bcast</text>
+      <text x="80" y="40" text-anchor="middle" font-size="11">Syncs M across processes</text>
+    </g>
+    
+    <!-- Ellipsis for multiple workers -->
+    <text x="250" y="240" font-size="24" text-anchor="middle" font-weight="bold">...</text>
+    <text x="550" y="240" font-size="24" text-anchor="middle" font-weight="bold">...</text>
+    
+    <!-- Legend -->
+    <g transform="translate(20, 520)">
+      <rect width="200" height="60" fill="white" stroke="black"/>
+      <line x1="10" y1="15" x2="40" y2="15" stroke="#FF6600" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+      <text x="45" y="20" font-size="12">Task Distribution</text>
+      <line x1="10" y1="35" x2="40" y2="35" stroke="#0066FF" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+      <text x="45" y="40" font-size="12">Result Collection</text>
+      <line x1="10" y1="55" x2="40" y2="55" stroke="#990099" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+      <text x="45" y="60" font-size="12">MPI_Bcast (Sync M)</text>
+    </g>
+  </svg>
